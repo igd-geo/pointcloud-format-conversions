@@ -1,0 +1,33 @@
+name: pointcloud-file-converter
+version: "0.1"
+author: Pascal Bormann <pascal.bormann@igd.fraunhofer.de>
+about: Converts point cloud files into different formats
+args:
+    - INPUT:
+        help: Input file or directory containing input files
+        required: true
+        index: 2
+    - OUTPUT:
+        help: Output file or directory to write output files to
+        required: true
+        index: 3
+    - FORMAT:
+        short: f
+        long: format
+        help: Output file format. Possible values are LAST, LAZT, LASER, LAZER
+        required: true
+        index: 1
+    - compression:
+        short: c
+        long: compression
+        value_name: COMPRESSION_FACTOR
+        help: Compression factor for LAZT and LAZER output formats. Must be a value between 1 (lowest compression, highest speed) and 9 (highest compression)
+    - blocksize:
+        short: b
+        long: blocksize
+        value_name: BLOCKSIZE
+        help: Specifies the number of points in each block for the LASER and LAZER file formats
+    - verbose:
+        short: v
+        long: verbose
+        help: Enable verbose logging during processing

@@ -1,0 +1,12 @@
+[package]
+name = "file_format_conversions"
+version = "0.1.0"
+authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
+edition = "2018"
+
+[dependencies]
+las = "0.7.3"
+anyhow = "1.0.33"
+lz4 = "1.23.2"
+clap = { version = "2.33.3", features = ["yaml"] }
+byteorder = "1.3.4"
