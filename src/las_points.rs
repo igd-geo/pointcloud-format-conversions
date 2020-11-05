@@ -199,6 +199,41 @@ impl LasPoints {
         Ok(())
     }
 
+    pub fn clear(&mut self) {
+        self.xyz.clear();
+        self.intensities.clear();
+        self.bit_attributes.clear();
+        self.classifications.clear();
+        self.scan_angle_ranks.clear();
+        self.user_data.clear();
+        self.source_ids.clear();
+        self.extra_bytes.clear();
+
+        match self.rgbs.as_mut() {
+            Some(rgbs) => rgbs.clear(),
+            _ => (),
+        }
+
+        match self.gps_times.as_mut() {
+            Some(gps) => gps.clear(),
+            _ => (),
+        }
+
+        match self.waveforms.as_mut() {
+            Some(waveforms) => waveforms.clear(),
+            _ => (),
+        }
+
+        match self.nirs.as_mut() {
+            Some(nirs) => nirs.clear(),
+            _ => (),
+        }
+    }
+
+    pub fn point_count(&self) -> usize {
+        self.xyz.len() / 12
+    }
+
     pub fn xyz(&self) -> &[u8] {
         &self.xyz
     }
