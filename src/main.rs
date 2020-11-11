@@ -498,6 +498,108 @@ fn write_uncompressed_block<W: std::io::Write + std::io::Seek>(
     Ok(start_index)
 }
 
+fn write_compressed_block<W: std::io::Write + std::io::Seek>(
+    point_buffer: &las_points::LasPoints,
+    writer: &mut W,
+    compression_factor: u32,
+) -> Result<u64> {
+    let start_index = writer.seek(SeekFrom::Current(0))?;
+
+    let number_of_attributes = point_buffer.number_of_attributes();
+    let mut attribute_offsets: Vec<u64> = Vec::with_capacity(
+        number_of_attributes
+            .try_into()
+            .expect("Number of point attributes exceeds usize::MAX on current platform"),
+    );
+
+    // Memorize the location where we will write the offset to the attribute blobs into
+    let offset_to_file_attributes_offset_table = writer.seek(SeekFrom::Current(0))?;
+    // Reserve the necessary space for the attribute offsets. Each offset is a single u64 value
+    writer.seek(SeekFrom::Current(number_of_attributes as i64 * 8))?;
+
+    // Write all attributes as compressed blobs
+    let attrib_xyz_range = write_compressed_blob(point_buffer.xyz(), writer, compression_factor)?;
+    attribute_offsets.push(attrib_xyz_range.start);
+
+    let attrib_intensity_range =
+        write_compressed_blob(point_buffer.intensities(), writer, compression_factor)?;
+    attribute_offsets.push(attrib_intensity_range.start);
+
+    let attrib_bit_attributes_range =
+        write_compressed_blob(point_buffer.bit_attributes(), writer, compression_factor)?;
+    attribute_offsets.push(attrib_bit_attributes_range.start);
+
+    let attrib_classifications_range =
+        write_compressed_blob(point_buffer.classifications(), writer, compression_factor)?;
+    attribute_offsets.push(attrib_classifications_range.start);
+
+    let attrib_scan_angle_ranks_range =
+        write_compressed_blob(point_buffer.scan_angle_ranks(), writer, compression_factor)?;
+    attribute_offsets.push(attrib_scan_angle_ranks_range.start);
+
+    let attrib_user_data_range =
+        write_compressed_blob(point_buffer.user_data(), writer, compression_factor)?;
+    attribute_offsets.push(attrib_user_data_range.start);
+
+    let attrib_source_ids_range =
+        write_compressed_blob(point_buffer.source_ids(), writer, compression_factor)?;
+    attribute_offsets.push(attrib_source_ids_range.start);
+
+    let attrib_extra_bytes_range =
+        write_compressed_blob(point_buffer.extra_bytes(), writer, compression_factor)?;
+    attribute_offsets.push(attrib_extra_bytes_range.start);
+
+    let mut end_of_block = attrib_extra_bytes_range.end;
+
+    match point_buffer.rgbs() {
+        Some(rgbs) => {
+            let attrib_rgb_range = write_compressed_blob(rgbs, writer, compression_factor)?;
+            attribute_offsets.push(attrib_rgb_range.start);
+            end_of_block = attrib_rgb_range.end;
+        }
+        _ => (),
+    }
+
+    match point_buffer.gps_times() {
+        Some(gps) => {
+            let attrib_gps_range = write_compressed_blob(gps, writer, compression_factor)?;
+            attribute_offsets.push(attrib_gps_range.start);
+            end_of_block = attrib_gps_range.end;
+        }
+        _ => (),
+    }
+
+    match point_buffer.waveforms() {
+        Some(waveforms) => {
+            let attrib_waveform_range =
+                write_compressed_blob(waveforms, writer, compression_factor)?;
+            attribute_offsets.push(attrib_waveform_range.start);
+            end_of_block = attrib_waveform_range.end;
+        }
+        _ => (),
+    }
+
+    match point_buffer.nirs() {
+        Some(nirs) => {
+            let attrib_nir_range = write_compressed_blob(nirs, writer, compression_factor)?;
+            attribute_offsets.push(attrib_nir_range.start);
+            end_of_block = attrib_nir_range.end;
+        }
+        _ => (),
+    }
+
+    // Write the actual attribute offsets
+    writer.seek(SeekFrom::Start(offset_to_file_attributes_offset_table))?;
+    for offset in attribute_offsets.into_iter() {
+        writer.write_u64::<LittleEndian>(offset)?;
+    }
+
+    // Make sure we move back to the end of the block so that the next block is written at the correct position
+    writer.seek(SeekFrom::Start(end_of_block))?;
+
+    Ok(start_index)
+}
+
 fn las_to_laser(in_path: &Path, out_path: &Path, block_size: u32, verbose: bool) -> Result<()> {
     const MIN_BLOCK_SIZE: u32 = 1024;
     if block_size < MIN_BLOCK_SIZE {
@@ -565,8 +667,81 @@ fn las_to_laser(in_path: &Path, out_path: &Path, block_size: u32, verbose: bool)
     Ok(())
 }
 
-fn las_to_lazer(in_path: &Path, out_path: &Path, block_size: u32, compression: u32) -> Result<()> {
-    todo!("not implemented")
+fn las_to_lazer(
+    in_path: &Path,
+    out_path: &Path,
+    block_size: u32,
+    compression: u32,
+    verbose: bool,
+) -> Result<()> {
+    const MIN_BLOCK_SIZE: u32 = 1024;
+    if block_size < MIN_BLOCK_SIZE {
+        return Err(anyhow!(
+            "Blocksize {} is less than minimum allowed blocksize {}",
+            block_size,
+            MIN_BLOCK_SIZE
+        ));
+    }
+    let blocksize_usize: usize = block_size
+        .try_into()
+        .expect("Could not convert blocksize from u32 to usize");
+
+    let mut uncompressed_writer = BufWriter::new(File::create(out_path)?);
+    let mut in_file = BufReader::new(File::open(in_path)?);
+    copy_header(&mut in_file, &mut uncompressed_writer)?;
+
+    in_file.seek(SeekFrom::Start(0))?;
+    let mut reader = Reader::new(in_file)?;
+
+    let las_header = reader.header();
+    if verbose {
+        println!("File header:\n{:#?}", las_header);
+    }
+
+    let number_of_blocks =
+        f64::ceil((las_header.number_of_points() as f64) / (block_size as f64)) as usize;
+    let size_of_block_offsets = number_of_blocks * 8;
+    // Memorize the offset in the file where we will write the block offsets
+    let offset_to_block_offsets = uncompressed_writer.seek(SeekFrom::Current(0))?;
+    // Reserve memory for the block offsets
+    uncompressed_writer.seek(SeekFrom::Current(
+        size_of_block_offsets
+            .try_into()
+            .expect("Size of block offsets is too large for usize"),
+    ))?;
+
+    let mut point_buffer =
+        las_points::LasPoints::from_format(las_header.point_format(), blocksize_usize)?;
+    let mut block_offsets: Vec<u64> = Vec::with_capacity(number_of_blocks);
+
+    for (idx, point_or_err) in reader.points().enumerate() {
+        if idx > 0 && idx % blocksize_usize == 0 {
+            if verbose {
+                println!("Writing LAZER block {}", idx / blocksize_usize);
+            }
+            let block_offset =
+                write_compressed_block(&point_buffer, &mut uncompressed_writer, compression)?;
+            block_offsets.push(block_offset);
+            point_buffer.clear();
+        }
+
+        let point = point_or_err?;
+        point_buffer.add_point(point)?;
+    }
+
+    if point_buffer.point_count() > 0 {
+        let block_offset =
+            write_compressed_block(&point_buffer, &mut uncompressed_writer, compression)?;
+        block_offsets.push(block_offset);
+    }
+
+    // Write block offsets
+    uncompressed_writer.seek(SeekFrom::Start(offset_to_block_offsets))?;
+    for block_offset in block_offsets.into_iter() {
+        uncompressed_writer.write_u64::<LittleEndian>(block_offset)?;
+    }
+
+    Ok(())
 }
 
 fn convert_file(
@@ -595,6 +770,7 @@ fn convert_file(
             out_path,
             block_size.expect("Argument BLOCKSIZE is required for LAS to LAZER conversion"),
             compression.expect("Argument COMPRESSION is required for LAS to LAZER conversion"),
+            verbose,
         ),
         OutputFormat::LAZT => las_to_lazt(
             in_path,
