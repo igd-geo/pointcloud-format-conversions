@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["LASER", "-b", "50000", "/home/pbormann/data/geodata/pointclouds/navvis_m6/NavVisHQ-5thFloor.las", "/home/pbormann/data/geodata/"],
+            "args": ["LAZER", "-b", "50000", "-c", "9", "/home/pbormann/data/geodata/pointclouds/navvis_m6/NavVisHQ-5thFloor.las", "/home/pbormann/data/geodata/test/"],
             "cwd": "${workspaceFolder}"
         },
         {

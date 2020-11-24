@@ -1,6 +1,8 @@
 use {
     anyhow::{anyhow, Result},
     las::point::{Format, Point},
+    las::Transform,
+    las::Vector,
     std::convert::TryInto,
 };
 
@@ -76,12 +78,12 @@ impl LasPoints {
         })
     }
 
-    pub fn add_point(&mut self, point: Point) -> Result<()> {
-        let mut raw_point = point.into_raw(&Default::default())?;
+    pub fn add_point(&mut self, point: Point, transforms: &Vector<Transform>) -> Result<()> {
+        let mut raw_point = point.into_raw(transforms)?;
 
-        let x_bytes = raw_point.x.to_be_bytes();
-        let y_bytes = raw_point.x.to_be_bytes();
-        let z_bytes = raw_point.x.to_be_bytes();
+        let x_bytes = raw_point.x.to_le_bytes();
+        let y_bytes = raw_point.y.to_le_bytes();
+        let z_bytes = raw_point.z.to_le_bytes();
 
         self.xyz.push(x_bytes[0]);
         self.xyz.push(x_bytes[1]);
@@ -96,7 +98,7 @@ impl LasPoints {
         self.xyz.push(z_bytes[2]);
         self.xyz.push(z_bytes[3]);
 
-        let intensity_bytes = raw_point.intensity.to_be_bytes();
+        let intensity_bytes = raw_point.intensity.to_le_bytes();
         self.intensities.push(intensity_bytes[0]);
         self.intensities.push(intensity_bytes[1]);
 
@@ -125,7 +127,7 @@ impl LasPoints {
                 // TODO This is a bug in the las-rs library, information about the size of the ScanAngleRank attribute (1 byte or 2 bytes)
                 // is lost in conversion from Point to RawPoint...
                 if self.is_extended_format {
-                    let rank_bytes = scaled_rank.to_be_bytes();
+                    let rank_bytes = scaled_rank.to_le_bytes();
                     self.scan_angle_ranks.push(rank_bytes[0]);
                     self.scan_angle_ranks.push(rank_bytes[1]);
                 } else {
@@ -136,15 +138,15 @@ impl LasPoints {
         }
 
         self.user_data.push(raw_point.user_data);
-        let source_id_bytes = raw_point.point_source_id.to_be_bytes();
+        let source_id_bytes = raw_point.point_source_id.to_le_bytes();
         self.source_ids.push(source_id_bytes[0]);
         self.source_ids.push(source_id_bytes[1]);
 
         match raw_point.color {
             Some(color) => {
-                let r_bytes = color.red.to_be_bytes();
-                let g_bytes = color.green.to_be_bytes();
-                let b_bytes = color.blue.to_be_bytes();
+                let r_bytes = color.red.to_le_bytes();
+                let g_bytes = color.green.to_le_bytes();
+                let b_bytes = color.blue.to_le_bytes();
                 let self_rgbs = self.rgbs.as_mut().unwrap();
                 self_rgbs.push(r_bytes[0]);
                 self_rgbs.push(r_bytes[1]);
@@ -158,7 +160,7 @@ impl LasPoints {
 
         match raw_point.gps_time {
             Some(gps_time) => {
-                let gps_time_bytes = gps_time.to_be_bytes();
+                let gps_time_bytes = gps_time.to_le_bytes();
                 let self_gps = self.gps_times.as_mut().unwrap();
                 self_gps.push(gps_time_bytes[0]);
                 self_gps.push(gps_time_bytes[1]);
