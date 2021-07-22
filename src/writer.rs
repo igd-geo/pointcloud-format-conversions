@@ -2,7 +2,7 @@ use crate::las_points::LasPoints;
 use anyhow::Result;
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::convert::TryInto;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{SeekFrom, Write};
 
 /**
  * Writes the given blob to the given writer as a single uncompressed blob. Returns the offset to the start and end of the

@@ -1,19 +1,20 @@
 use crate::writer::write_compressed_blob;
 use crate::writer::write_compressed_block;
 use crate::writer::write_uncompressed_block;
-use las::Read;
+use anyhow::bail;
+use las::{Read, Writer};
 use rayon::prelude::*;
 use std::convert::TryInto;
 use {
     anyhow::{anyhow, Context, Result},
     byteorder::{LittleEndian, WriteBytesExt},
-    clap::{load_yaml, value_t, App, Arg},
-    las::{Point, Reader},
-    std::fs::{copy, read_dir, File},
+    clap::{load_yaml, App},
+    las::{Reader},
+    std::fs::{read_dir, File},
     std::io::{BufReader, BufWriter, Seek, SeekFrom, Write},
     std::path::{Path, PathBuf},
     std::str::FromStr,
-    std::time::{Duration, Instant},
+    std::time::{Instant},
 };
 
 mod las_points;
@@ -21,6 +22,8 @@ pub mod writer;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum OutputFormat {
+    LAS,
+    LAZ,
     LAST,
     LAZT,
     LASER,
@@ -32,6 +35,8 @@ impl FromStr for OutputFormat {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
+            "LAS" => Ok(OutputFormat::LAS),
+            "LAZ" => Ok(OutputFormat::LAZ),
             "LAST" => Ok(OutputFormat::LAST),
             "LAZT" => Ok(OutputFormat::LAZT),
             "LASER" => Ok(OutputFormat::LASER),
@@ -574,6 +579,22 @@ fn las_to_lazer(
     Ok(())
 }
 
+fn las_to_las(in_path: &Path, out_path: &Path, verbose: bool) -> Result<()> {
+    let mut reader = Reader::from_path(in_path)?;
+    let header = reader.header().clone();
+    let mut writer = Writer::from_path(out_path, header)?;
+
+    if verbose {
+        println!("Converting from {} to {}", in_path.display(), out_path.display());
+    }
+
+    for point in reader.points() {
+        las::Write::write(&mut writer, point?)?;
+    }
+
+    Ok(())
+}
+
 fn convert_file(
     in_path: &Path,
     out_path: &Path,
@@ -608,6 +629,8 @@ fn convert_file(
             compression.expect("Argument COMPRESSION is required for LAS to LAZER conversion"),
             verbose,
         ),
+        OutputFormat::LAZ => las_to_las(in_path, out_path, verbose),
+        OutputFormat::LAS => las_to_las(in_path, out_path, verbose),
     }
 }
 
@@ -650,6 +673,8 @@ fn get_output_file_from_input_file_name(
         OutputFormat::LAST => file_name_with_new_extension.push(".last"),
         OutputFormat::LAZER => file_name_with_new_extension.push(".lazer"),
         OutputFormat::LAZT => file_name_with_new_extension.push(".lazt"),
+        OutputFormat::LAZ => file_name_with_new_extension.push(".laz"),
+        OutputFormat::LAS => file_name_with_new_extension.push(".las"),
     };
     Ok(out_path.join(file_name_with_new_extension))
 }
@@ -683,7 +708,14 @@ fn main() -> Result<()> {
     };
     let is_verbose = matches.occurrences_of("verbose") > 0;
 
+    if !out_path.exists() {
+        std::fs::create_dir_all(out_path).context("Could not create output directory")?;
+    }
+
     let input_files = get_input_files(in_path)?;
+    if input_files.is_empty() {
+        bail!("No files to convert");
+    }
     let output_files = input_files
         .iter()
         .map(|f| get_output_file_from_input_file_name(f, out_path, output_format))

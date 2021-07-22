@@ -19,7 +19,26 @@
                     "kind": "bin"
                 }
             },
-            "args": ["LAZER", "-b", "50000", "-c", "9", "/home/pbormann/data/geodata/pointclouds/navvis_m6/NavVisHQ-5thFloor.las", "/home/pbormann/data/geodata/test/"],
+            "args": ["-b", "50000", "-c", "9", "LAZER", "/Users/pbormann/data/geodata/pointclouds/datasets/navvis_m6_3rdFloor", "/Users/pbormann/data/projects/progressive_indexing/experiment_data"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release executable 'file_format_conversions'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=file_format_conversions",
+                    "--package=file_format_conversions",
+                    "--release"
+                ],
+                "filter": {
+                    "name": "file_format_conversions",
+                    "kind": "bin"
+                }
+            },
+            "args": ["-b", "50000", "-c", "9", "LAST", "/Users/pbormann/data/geodata/pointclouds/datasets/CA13_SAN_SIM/ot_35120B5218A_1.laz", "/Users/pbormann/data/projects/progressive_indexing/experiment_data/ca13/tmp"],
             "cwd": "${workspaceFolder}"
         },
         {
